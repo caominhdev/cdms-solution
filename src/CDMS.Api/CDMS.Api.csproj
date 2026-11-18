@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CDMS.Api</RootNamespace>
+    <AssemblyName>CDMS.Api</AssemblyName>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CDMS.Core\CDMS.Core.csproj" />
+    <ProjectReference Include="..\CDMS.Infrastructure\CDMS.Infrastructure.csproj" />
+    <ProjectReference Include="..\CDMS.Connectors.Vietful\CDMS.Connectors.Vietful.csproj" />
+    <ProjectReference Include="..\CDMS.Connectors.Shopify\CDMS.Connectors.Shopify.csproj" />
+    <ProjectReference Include="..\CDMS.Metrics\CDMS.Metrics.csproj" />
+    <ProjectReference Include="..\CDMS.Workers\CDMS.Workers.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+  </ItemGroup>
+
+</Project>

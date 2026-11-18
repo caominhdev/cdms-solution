@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <RootNamespace>CDMS.Core</RootNamespace>
+    <AssemblyName>CDMS.Core</AssemblyName>
+    <Version>1.0.0</Version>
+    <Authors>CDMS Team</Authors>
+    <Description>Core domain library for the Centralised Data Management System (CDMS).</Description>
+  </PropertyGroup>
+
+
+</Project>

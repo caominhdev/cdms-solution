@@ -1,0 +1,180 @@
+networks:
+  cdms-net:
+    driver: bridge
+
+volumes:
+  roach1-data:
+  roach2-data:
+  roach3-data:
+  rabbitmq-mnesia-data:
+
+services:
+  # ---------------------------------------------------------------------------
+  # CockroachDB 3-Node Distributed SQL Cluster
+  # ---------------------------------------------------------------------------
+  roach1:
+    image: cockroachdb/cockroach:v23.2.0
+    container_name: cdms-roach1
+    hostname: roach1
+    networks:
+      - cdms-net
+    command: start --insecure --listen-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --join=roach1,roach2,roach3 --store=/cockroach/cockroach-data
+    volumes:
+      - roach1-data:/cockroach/cockroach-data
+    ports:
+      - "26257:26257"
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health?ready=1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  roach2:
+    image: cockroachdb/cockroach:v23.2.0
+    container_name: cdms-roach2
+    hostname: roach2
+    networks:
+      - cdms-net
+    command: start --insecure --listen-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --join=roach1,roach2,roach3 --store=/cockroach/cockroach-data
+    volumes:
+      - roach2-data:/cockroach/cockroach-data
+
+  roach3:
+    image: cockroachdb/cockroach:v23.2.0
+    container_name: cdms-roach3
+    hostname: roach3
+    networks:
+      - cdms-net
+    command: start --insecure --listen-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --join=roach1,roach2,roach3 --store=/cockroach/cockroach-data
+    volumes:
+      - roach3-data:/cockroach/cockroach-data
+
+  # CockroachDB Cluster Initializer & Schema Migrator
+  roach-init:
+    image: cockroachdb/cockroach:v23.2.0
+    container_name: cdms-roach-init
+    networks:
+      - cdms-net
+    depends_on:
+      roach1:
+        condition: service_started
+      roach2:
+        condition: service_started
+      roach3:
+        condition: service_started
+    volumes:
+      - ./src/CDMS.Infrastructure/Migrations/001_InitialSchema.sql:/init/001_InitialSchema.sql
+    entrypoint: >
+      /bin/bash -c "
+      echo 'Initializing CockroachDB cluster...' &&
+      ./cockroach init --insecure --host=roach1:26257 || true;
+      echo 'Waiting for cluster readiness...' &&
+      sleep 3;
+      echo 'Creating cdms database...' &&
+      ./cockroach sql --insecure --host=roach1:26257 -e 'CREATE DATABASE IF NOT EXISTS cdms;' &&
+      echo 'Applying CDMS initial schema...' &&
+      ./cockroach sql --insecure --host=roach1:26257 --database=cdms < /init/001_InitialSchema.sql &&
+      echo 'CockroachDB initialized successfully.'
+      "
+
+  # ---------------------------------------------------------------------------
+  # RabbitMQ Messaging Bus for Vietful Push Events
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: cdms-rabbitmq
+    hostname: rabbitmq
+    networks:
+      - cdms-net
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-mnesia-data:/var/lib/rabbitmq/mnesia
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Mock Services (Vietful & Shopify)
+  # ---------------------------------------------------------------------------
+  vietful-mock:
+    build:
+      context: .
+      dockerfile: mock-services/VietfulMockService/Dockerfile
+    container_name: cdms-vietful-mock
+    networks:
+      - cdms-net
+    ports:
+      - "5100:5100"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5100
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  shopify-mock:
+    build:
+      context: .
+      dockerfile: mock-services/ShopifyMockService/Dockerfile
+    container_name: cdms-shopify-mock
+    networks:
+      - cdms-net
+    ports:
+      - "5200:5200"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5200
+
+  # ---------------------------------------------------------------------------
+  # CDMS Core Components
+  # ---------------------------------------------------------------------------
+  cdms-api:
+    build:
+      context: .
+      dockerfile: src/CDMS.Api/Dockerfile
+    container_name: cdms-api
+    networks:
+      - cdms-net
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5000
+      - ConnectionStrings__CockroachDb=Host=roach1;Port=26257;Database=cdms;Username=root;Password=;SSL Mode=Disable;
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+    depends_on:
+      roach-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+
+  cdms-workers:
+    build:
+      context: .
+      dockerfile: src/CDMS.Workers/Dockerfile
+    container_name: cdms-workers
+    networks:
+      - cdms-net
+    environment:
+      - DOTNET_ENVIRONMENT=Development
+      - ConnectionStrings__CockroachDb=Host=roach1;Port=26257;Database=cdms;Username=root;Password=;SSL Mode=Disable;
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+      - Shopify__BaseUrl=http://shopify-mock:5200/admin/api/2024-01/graphql.json
+      - Vietful__BaseUrl=http://vietful-mock:5100
+    depends_on:
+      cdms-api:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
