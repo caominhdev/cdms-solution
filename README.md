@@ -81,7 +81,7 @@ flowchart TD
 
     VF -->|Near Real-Time Events| RMQ
     RMQ -->|Topic Consumption| VFW
-    SP -->|GraphQL Queries (after: cursor)| SPW
+    SP -->|"GraphQL Queries (after: cursor)"| SPW
 
     VFW --> VAL
     SPW --> VAL
